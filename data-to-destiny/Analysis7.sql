@@ -32,7 +32,7 @@ FROM
 ORDER BY 
 	Date;
     
--- SB2,SB3 AND SB4
+-- SB2,SB3,SB4,EB1,SQLB1 and DAIB1
 WITH Funnel2 AS (
     SELECT 
         CourseID,
@@ -47,6 +47,40 @@ WITH Funnel2 AS (
 		may_data
 	WHERE
 		VisitDate>='2023-05-01'
+    GROUP BY 
+		CourseID,
+		VisitDate
+        
+	UNION ALL
+    
+    SELECT 
+        CourseID,
+        VisitDate,
+        COUNT(DISTINCT VisitorID) AS Total_Visitors,
+        COUNT(DISTINCT CASE WHEN locate('Courses',VisitedPages) >0 THEN VisitorID END) AS Reached_Courses,
+        COUNT(DISTINCT CASE WHEN locate('Course Details',VisitedPages) >0 THEN VisitorID END) AS Reached_Course_Details,
+        COUNT(DISTINCT CASE WHEN locate('Register Button',VisitedPages) >0 THEN VisitorID END) AS Reached_Register,
+        COUNT(DISTINCT CASE WHEN locate('Payment Page',VisitedPages) >0 THEN VisitorID END) AS Reached_Payment_Page,
+        COUNT(DISTINCT CASE WHEN locate('Payment Success',VisitedPages) >0 THEN VisitorID END) AS Enrolled
+    FROM 
+		june_data
+    GROUP BY 
+		CourseID,
+		VisitDate
+        
+	UNION ALL
+    
+    SELECT 
+        CourseID,
+        VisitDate,
+        COUNT(DISTINCT VisitorID) AS Total_Visitors,
+        COUNT(DISTINCT CASE WHEN locate('Courses',VisitedPages) >0 THEN VisitorID END) AS Reached_Courses,
+        COUNT(DISTINCT CASE WHEN locate('Course Details',VisitedPages) >0 THEN VisitorID END) AS Reached_Course_Details,
+        COUNT(DISTINCT CASE WHEN locate('Register Button',VisitedPages) >0 THEN VisitorID END) AS Reached_Register,
+        COUNT(DISTINCT CASE WHEN locate('Payment Page',VisitedPages) >0 THEN VisitorID END) AS Reached_Payment_Page,
+        COUNT(DISTINCT CASE WHEN locate('Payment Success',VisitedPages) >0 THEN VisitorID END) AS Enrolled
+    FROM 
+		july_data_20230715
     GROUP BY 
 		CourseID,
 		VisitDate
@@ -71,51 +105,23 @@ ORDER BY
 	CourseID,
 	Date;
     
+
+    
     
 #CONVERSION RATES(CR),COST PER ACQUISITION(CPA),RETURN ON INVESTMENT(ROI)
--- S1B1
+
 WITH reguniq AS(
 SELECT
 	monthname(VisitDate) AS Month,
 	CourseID,
+    CampaignID,
 	COUNT(DISTINCT CASE WHEN Status = 'Enrolled' THEN VisitorID END) AS TotalRegistrations,
     COUNT(DISTINCT VisitorID) AS TotalVisitors
 FROM
-	april_data
-WHERE
-	CourseID='S1B1'
+	june_data
 GROUP BY
 	Month,
-	CourseID
-    )
-SELECT
-	r.Month,
-	r.CourseID,
-	r.TotalRegistrations,
-    r.TotalVisitors,
-    cp.Price,
-    ROUND((TotalRegistrations * 100.0) / NULLIF(TotalVisitors, 0), 2) AS Registration_Percentage,
-    ROUND((TotalRegistrations * cp.Price) / NULLIF(TotalRegistrations, 0), 2) AS CPA
-FROM
-	reguniq r
-JOIN
-	course_price cp
-ON
-	cp.Course=r.CourseID;
-    
--- SB2,SB3 AND SB4
-WITH reguniq AS(
-SELECT
-	monthname(VisitDate) AS Month,
-	CourseID,
-	COUNT(DISTINCT CASE WHEN Status = 'Enrolled' THEN VisitorID END) AS TotalRegistrations,
-    COUNT(DISTINCT VisitorID) AS TotalVisitors
-FROM
-	april_data
-WHERE
-	CourseID='SB2'
-GROUP BY
-	Month,
+    CampaignID,
 	CourseID
     
 UNION ALL
@@ -123,28 +129,47 @@ UNION ALL
 SELECT
 	monthname(VisitDate) AS Month,
 	CourseID,
+    CampaignID,
 	COUNT(DISTINCT CASE WHEN Status = 'Enrolled' THEN VisitorID END) AS TotalRegistrations,
     COUNT(DISTINCT VisitorID) AS TotalVisitors
 FROM
-	may_data
+	july_data_20230715
 GROUP BY
 	Month,
+    CampaignID,
 	CourseID
     )
 SELECT
 	r.Month,
 	r.CourseID,
+    r.CampaignID,
+    c.platform,
 	r.TotalRegistrations,
     r.TotalVisitors,
-    cp.Price,
-    ROUND((TotalRegistrations * 100.0) / NULLIF(TotalVisitors, 0), 2) AS Registration_Percentage,
-    ROUND((TotalRegistrations * cp.Price) / NULLIF(TotalRegistrations, 0), 2) AS CPA
+    SUM(c.budget) AS Total_budget,
+    (r.TotalRegistrations * cp.Price) AS Revenue,
+    ROUND((r.TotalRegistrations * 100.0) / NULLIF(r.TotalVisitors, 0), 2) AS Registration_Percentage,
+    ROUND(SUM(c.budget) / NULLIF(r.TotalRegistrations, 0), 2) AS CPA,
+    ROUND((((r.TotalRegistrations * cp.Price) - SUM(c.budget)) * 100.0) / NULLIF(SUM(c.budget), 0), 2) AS ROI
 FROM
 	reguniq r
 JOIN
-	course_price cp
+	campaigns c
 ON
-	cp.Course=r.CourseID
+	c.course=r.CourseID
+AND 
+	c.campaign_id = r.CampaignID
+JOIN 
+	course_price cp 
+ON 
+	cp.Course = r.CourseID
+GROUP BY
+	r.Month,
+	r.CourseID,
+    r.CampaignID,
+    c.platform,
+    r.TotalRegistrations,
+    r.TotalVisitors
 ORDER BY
 	r.Month,
-    r.CourseID;
+	r.CourseID;
